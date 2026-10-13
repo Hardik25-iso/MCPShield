@@ -1,0 +1,64 @@
+# Runtime policies for the Finance Ops Assistant. Loaded by data_loader.load_policies().
+
+default_intent: general_query
+
+# Keyword rules for intent derivation (mock backend; the Ollama backend derives intent with a JSON-schema call).
+intent_keywords:
+  pay_vendor: [pay , payment, settle, remit, transfer, disburse]
+  email_report: [email, e-mail, mail , send a summary, send the summary, notify]
+  summarize_invoices: [summar, invoices, overdue, outstanding, unpaid, total due]
+  vendor_lookup: [vendor, supplier, gstin, details of]
+  file_review: [read the file, open the file, sandbox, document, policy file, .txt, .md]
+  utility_lookup: [weather, holiday, convert, exchange rate, currency, note]
+
+# Tool allowlist per intent (unqualified tool names). common_tools are allowed for every intent.
+common_tools: [list_invoices, get_invoice, get_vendor, convert_currency, lookup_holiday, get_weather]
+intent_tools:
+  pay_vendor: [send_payment]
+  email_report: [send_email]
+  summarize_invoices: []
+  vendor_lookup: []
+  file_review: [read_file]
+  utility_lookup: [save_note]
+  general_query: []
+
+# Arguments of side-effecting tools whose provenance is checked by the taint detector.
+high_risk_tools:
+  send_payment: [vendor_id, amount, account]
+  send_email: [to]
+  read_file: [path]
+
+payment_cap: 250000.0
+allowed_email_domains: [sharmatraders.in, finco.in]
+
+# Instruction patterns: imperative text aimed at the model, not the user. Weight scales per-hit risk.
+instruction_patterns:
+  - {label: ignore_previous, weight: 1.0, regex: '\b(ignore|disregard|forget|override)\b[^.]{0,40}\b(previous|prior|above|earlier|all|system)\b[^.]{0,25}\b(instructions?|rules?|prompts?|guidelines?)'}
+  - {label: role_override, weight: 0.9, regex: '\b(you are now|new instructions?|system (prompt|override|notice)|developer mode|as the assistant you must)\b'}
+  - {label: conceal_from_user, weight: 0.9, regex: "\\b(do not|don't|never|without)\\b[^.]{0,20}\\b(tell|telling|mention|mentioning|inform|informing|notify|notifying|reveal|show|alert)\\b[^.]{0,30}\\b(user|anyone|them|customer|human)"}
+  - {label: covert_action, weight: 0.8, regex: '\b(silently|secretly|quietly|covertly|in the background)\b'}
+  - {label: tool_directive, weight: 0.9, regex: '\b(call|invoke|execute|run|use)\s+(the\s+)?[`''"]?(\w+__)?(send_payment|send_email|read_file|save_note|get_vendor)\b'}
+  - {label: payment_redirect, weight: 1.0, regex: '\b(pay|transfer|send|remit|route|redirect)\b[^.]{0,60}\b(account|a/c|acct|beneficiary)\b[^.]{0,20}\d{6,}'}
+  - {label: bank_detail_change, weight: 0.9, regex: '\b(update|change|switch|replace)\b[^.]{0,30}\b(bank (details|account)|beneficiary|ifsc)\b'}
+  - {label: recipient_redirect, weight: 0.9, regex: '\b(bcc|cc|forward|copy|send a copy)\b[^.]{0,40}[\w.+-]+@[\w-]+\.[\w.]+'}
+  - {label: secret_harvest, weight: 1.0, regex: '\b(include|append|attach|add|put|pass|paste|insert|fill)\b[^.]{0,60}\b(api[_ ]?keys?|secrets?|credentials?|passwords?|\.env|tokens?|private keys?)\b'}
+  - {label: secret_file_read, weight: 1.0, regex: '\bread\b[^.]{0,40}(\.env\b|credentials|id_rsa|secrets?\.)'}
+  - {label: shadow_other_tool, weight: 0.9, regex: '\b(whenever|when|every time|each time|before)\b[^.]{0,40}\b(send_email|send_payment|sending (an )?emails?|making (a )?payments?)\b[^.]{0,80}\b(must|always|also|instead|first)\b'}
+  - {label: param_override, weight: 0.9, regex: '\b(always|instead|must)\b[^.]{0,40}\b(set|use|change)\b[^.]{0,30}\b(recipient|amount|account|vendor_id|to address|the to field)\b'}
+  - {label: hidden_tag, weight: 0.6, regex: '<\s*(important|system|instructions?|admin)\s*>'}
+
+# Sensitive-data patterns scanned in tool-call arguments.
+sensitive_patterns:
+  - {label: pan, weight: 0.8, regex: '\b[A-Z]{5}[0-9]{4}[A-Z]\b'}
+  - {label: aadhaar, weight: 0.9, regex: '\b[2-9][0-9]{3}\s?[0-9]{4}\s?[0-9]{4}\b'}
+  - {label: openai_style_key, weight: 1.0, regex: '\bsk-[A-Za-z0-9_-]{16,}'}
+  - {label: aws_access_key, weight: 1.0, regex: '\bAKIA[0-9A-Z]{16}\b'}
+  - {label: env_secret_assignment, weight: 1.0, regex: '\b[A-Z][A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD|PASS)[A-Z0-9_]*\s*=\s*\S{6,}'}
+  - {label: private_key_block, weight: 1.0, regex: '-----BEGIN [A-Z ]*PRIVATE KEY-----'}
+
+# Description text asking the agent to fill a parameter with data it should not share.
+exfil_cue_patterns:
+  - {label: fill_param_with_context, weight: 1.0, regex: '\b(fill|populate|set|pass|include)\b[^.]{0,40}\b(notes|context|debug|metadata|extra)\b[^.]{0,60}\b(conversation|history|secrets?|keys?|credentials?|file contents?|\.env|system prompt)'}
+
+suspicious_param_names: [notes, context, debug, metadata, extra, sidenote, session_data]
+hidden_tag_names: [IMPORTANT, SYSTEM, INSTRUCTIONS, ADMIN]

@@ -1,0 +1,97 @@
+# MCPShield configuration: the single source of truth for thresholds, models, paths and weights.
+# Any key can be overridden by env vars prefixed MCPSHIELD_, nested with "__",
+# e.g. MCPSHIELD_LLM__BACKEND=ollama or MCPSHIELD_SHIELD__ENABLED=false.
+
+paths:
+  data_dir: data
+  synthetic_dir: data/synthetic
+  sandbox_dir: data/synthetic/sandbox
+  scenarios_dir: data/scenarios
+  policies_file: data/policies/policies.yaml
+  threat_kb_dir: data/threat_kb
+  db_path: var/mcpshield.db
+  chroma_dir: var/chroma
+  eval_dir: var/eval
+  figures_dir: docs/figures
+  results_md: docs/results.md
+  log_file: var/mcpshield.log
+
+llm:
+  backend: mock              # mock | ollama
+  ollama_url: http://localhost:11434
+  judge_model: qwen3:8b
+  fast_model: llama3.2:3b
+  temperature: 0.0
+  sample_temperature: 0.7    # used for self-consistency samples
+  timeout_s: 60
+  max_retries: 1             # retries on schema-invalid LLM output before conservative fallback
+
+rag:
+  embedder: auto             # auto | sentence-transformers | hashing
+  reranker: auto             # auto | cross-encoder | lexical
+  embed_model: sentence-transformers/all-MiniLM-L6-v2
+  rerank_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  hashing_dim: 512
+  collection: threat_kb
+  chunk_size: 400
+  chunk_overlap: 80
+  candidates: 20             # per retriever before fusion
+  top_k: 3
+  rrf_k: 60
+
+risk:
+  grey_zone: [0.3, 0.7]      # rule-risk band that triggers the deep (LLM) path
+  thresholds:                # risk >= value maps to the action (checked high to low)
+    block: 0.8
+    escalate: 0.6
+    sanitize: 0.35
+  self_consistency_n: 3
+  reputation_weight: 0.15    # max contribution of a server's incident history
+  reputation_saturation: 5   # incidents at which reputation prior saturates
+  weights:                   # per detector family, used in noisy-OR aggregation
+    instruction: 0.85
+    hidden_text: 0.9
+    schema_params: 0.6
+    cross_tool: 0.9
+    rug_pull: 1.0
+    sensitive_data: 0.95
+    policy: 1.0
+    taint: 0.8
+    rag_similarity: 0.5
+    llm_judge: 0.7
+    reputation: 1.0
+
+shield:
+  enabled: true
+  sanitize_mode: spotlight   # spotlight | quarantine
+  escalate_counts_as_blocked: true
+  tool_refresh_interval_s: 30
+  ablation:                  # agent switches; detector families can be disabled individually
+    registry_auditor: true
+    intent_verifier: true
+    output_sanitizer: true
+    llm_checks: true
+    rag: true
+  disabled_detectors: []
+
+servers:
+  finance:
+    module: mcpshield.servers.finance_server
+  utility:
+    module: mcpshield.servers.utility_server
+  namespace_sep: "__"
+
+data:
+  seed: 42
+  n_vendors: 15
+  n_invoices: 40
+  n_poisoned_invoices: 4
+
+eval:
+  ablations: [static_only, plus_intent_verifier, plus_output_sanitizer, full]
+  backends: [mock]
+  max_agent_steps: 8
+
+logging:
+  level: INFO
+  json: true
