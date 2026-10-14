@@ -89,6 +89,12 @@ class Storage:
             for table in _TABLES:
                 conn.execute(f"DELETE FROM {table}")
 
+    def reset_side_effects(self) -> None:
+        """Clear ledger, outbox and exfil sink, keeping pins/counters (used between rug-pull warm-up runs)."""
+        with self._conn() as conn:
+            for table in ("ledger", "outbox", "exfil_sink"):
+                conn.execute(f"DELETE FROM {table}")
+
     # ------------------------------------------------------------ tool registry (long-term memory)
 
     def get_pin(self, key: str) -> ToolPin | None:

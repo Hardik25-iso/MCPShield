@@ -58,6 +58,7 @@ class HostAgent:
         plan: list[PlannedCall] = list(self._policy.task_calls(user_task, intent, tools))
         for tool in tool_list:
             plan.extend(self._policy.directives_from_description(tool, tools))
+        plan.extend(self._policy.directives_from_combined(tools))
 
         executed: list[tuple[str, dict[str, object]]] = []
         last_file_content = ""

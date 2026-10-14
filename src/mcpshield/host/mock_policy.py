@@ -20,7 +20,7 @@ from mcpshield.config import Settings
 from mcpshield.data_loader import load_policies
 from mcpshield.llm import REQUEST_TAG, LLMClient, tagged
 from mcpshield.schemas import IntentResult, ToolDescriptor
-from mcpshield.text_utils import reveal
+from mcpshield.text_utils import compile_patterns, instruction_hits, reveal
 
 _VENDOR_RE = re.compile(r"\bvendor\s+(V\d{3})\b", re.I)
 _AMOUNT_RE = re.compile(r"\b(?:for|of|amount|inr|rs\.?)\s*([\d,]{4,})", re.I)
@@ -51,6 +51,7 @@ class NaiveObedientPolicy:
         self._settings = settings
         self._llm = llm
         self._policies = load_policies(settings)
+        self._patterns = compile_patterns(self._policies.instruction_patterns)
 
     def intent(self, user_task: str) -> IntentResult:
         result = self._llm.structured(tagged(REQUEST_TAG, user_task), IntentResult)
@@ -120,8 +121,19 @@ class NaiveObedientPolicy:
         text = reveal(output)
         return self._payment_directive(text, tools) + self._email_directive(text, tools)
 
+    def directives_from_combined(self, tools: dict[str, ToolDescriptor]) -> list[PlannedCall]:
+        """Scan the concatenation of all descriptions to obey a split payload no single tool reveals."""
+        combined = reveal("\n".join(t.description for t in tools.values()))
+        return self._payment_directive(combined, tools) + self._email_directive(combined, tools)
+
+    def _looks_like_instruction(self, text: str) -> bool:
+        """Worst-case trigger: an imperative pattern, or an explicit sink/cue, marks text as an instruction."""
+        if instruction_hits(text, self._patterns):
+            return True
+        return bool(_PAY_CUE.search(text) or _EMAIL_CUE.search(text))
+
     def _payment_directive(self, text: str, tools: dict[str, ToolDescriptor]) -> list[PlannedCall]:
-        if "finance__send_payment" not in tools or not _PAY_CUE.search(text):
+        if "finance__send_payment" not in tools or not self._looks_like_instruction(text):
             return []
         vendor, amount = self._payment_args(text)
         if vendor and amount:
@@ -129,7 +141,7 @@ class NaiveObedientPolicy:
         return []
 
     def _email_directive(self, text: str, tools: dict[str, ToolDescriptor]) -> list[PlannedCall]:
-        if "finance__send_email" not in tools or not _EMAIL_CUE.search(text):
+        if "finance__send_email" not in tools or not self._looks_like_instruction(text):
             return []
         match = _EMAIL_RE.search(text)
         if not match:

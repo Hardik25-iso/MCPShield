@@ -59,6 +59,12 @@ def _fresh_settings() -> tuple[Settings, Path, tempfile.TemporaryDirectory]:
     return get_settings(), db_path, tmp
 
 
+async def _invoke(settings: Settings, case: Case, shield_on: bool, ablation: str) -> HostRun:
+    if shield_on:
+        return await run_proxied(settings, case.user_task, case.scenario, ablation)
+    return await run_direct(settings, case.user_task, case.scenario)
+
+
 def _outcome_met(outcome: Outcome, storage: Storage, run: HostRun) -> bool:
     match = outcome.match
     if outcome.kind == "payment":
@@ -89,10 +95,13 @@ def _measure(storage: Storage) -> tuple[bool, list[float], int]:
 
 
 async def _run_one(settings: Settings, case: Case, shield_on: bool, ablation: str, backend: str) -> RunResult:
-    if shield_on:
-        run = await run_proxied(settings, case.user_task, case.scenario, ablation)
-    else:
-        run = await run_direct(settings, case.user_task, case.scenario)
+    # Rug pull is a two-listing attack: a warm-up run approves/pins the benign version, then the scored run
+    # sees the changed version (caught by the shield, obeyed by the naive agent when the shield is off).
+    if case.attack_class == "rug_pull":
+        await _invoke(settings, case, shield_on, ablation)
+        Storage(settings.paths.db_path).reset_side_effects()
+
+    run = await _invoke(settings, case, shield_on, ablation)
     storage = Storage(settings.paths.db_path)
     met = _outcome_met(case.outcome, storage, run)
     flagged, latencies, llm_calls = _measure(storage)
