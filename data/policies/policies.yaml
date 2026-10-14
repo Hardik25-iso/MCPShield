@@ -58,7 +58,8 @@ sensitive_patterns:
 
 # Description text asking the agent to fill a parameter with data it should not share.
 exfil_cue_patterns:
-  - {label: fill_param_with_context, weight: 1.0, regex: '\b(fill|populate|set|pass|include)\b[^.]{0,40}\b(notes|context|debug|metadata|extra)\b[^.]{0,60}\b(conversation|history|secrets?|keys?|credentials?|file contents?|\.env|system prompt)'}
+  - {label: fill_param_with_secret, weight: 1.0, regex: '\b(fill|populate|set|pass|include|put|add|insert)\b[^.]{0,50}\b(notes?|context|debug|metadata|extra|sidenote|session_data)\b'}
+  - {label: harvest_secret_reference, weight: 1.0, regex: '(\.env\b|\bsecrets?\b|\bcredentials?\b|\bapi[_ ]?keys?\b|\bconversation history\b|\bsystem prompt\b|\bprivate keys?\b)'}
 
 suspicious_param_names: [notes, context, debug, metadata, extra, sidenote, session_data]
 hidden_tag_names: [IMPORTANT, SYSTEM, INSTRUCTIONS, ADMIN]
