@@ -115,9 +115,7 @@ class ServersConfig(BaseModel):
 
 class DataConfig(BaseModel):
     seed: int
-    n_vendors: int
     n_invoices: int
-    n_poisoned_invoices: int
 
 
 class EvalConfig(BaseModel):

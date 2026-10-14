@@ -83,9 +83,7 @@ servers:
 
 data:
   seed: 42
-  n_vendors: 15
   n_invoices: 40
-  n_poisoned_invoices: 4
 
 eval:
   ablations: [static_only, plus_intent_verifier, plus_output_sanitizer, full]
