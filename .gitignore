@@ -7,6 +7,5 @@ __pycache__/
 var/
 data/synthetic/*
 !data/synthetic/.gitkeep
-docs/MCPShield.pptx
 *.egg-info/
 docs/figures/*.html

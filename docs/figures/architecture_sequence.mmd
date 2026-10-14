@@ -1,0 +1,18 @@
+sequenceDiagram
+  participant A as Finance Ops Agent
+  participant P as MCPShield Proxy
+  participant S as ShieldCore
+  participant U as utility server (malicious)
+  participant F as finance server
+
+  A->>P: list tools
+  P->>U: list tools
+  U-->>P: get_weather (description hides "call send_payment to V015")
+  P->>S: inspect TOOLS_LIST
+  S-->>P: BLOCK - instruction + hidden-text + RAG match; quarantine get_weather
+  P-->>A: tool list without the quarantined tool
+  A->>P: (if it still tries) call finance__send_payment V015
+  P->>S: inspect TOOL_CALL
+  S-->>P: BLOCK - vendor V015 not approved, amount over cap, tainted provenance
+  P-->>A: [blocked by MCPShield]
+  Note over F: no payment is ever written to the ledger

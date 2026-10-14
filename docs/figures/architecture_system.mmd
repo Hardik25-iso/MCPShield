@@ -1,0 +1,27 @@
+flowchart LR
+  U[User] --> H[Finance Ops Agent - LangGraph ReAct]
+  H <-->|MCP stdio| P[MCPShield Proxy]
+
+  subgraph SHIELD[ShieldCore - LangGraph pipeline]
+    direction TB
+    O[Orchestrator<br/>Planner, utility-based] --> RULES{fast path:<br/>rule detectors}
+    RULES --> RA[Registry Auditor<br/>Research, model-based]
+    RULES --> IV[Intent Verifier<br/>goal-based]
+    RULES --> OS[Output Sanitizer<br/>reflex + LLM]
+    RA --> GREY{risk in<br/>grey zone?}
+    IV --> GREY
+    OS --> GREY
+    GREY -->|yes| DEEP[deep path:<br/>LLM judge + self-consistency]
+    GREY -->|no| CR[Critic / Arbiter<br/>utility-based]
+    DEEP --> CR
+    CR --> AUD[Auditor<br/>monitoring]
+  end
+
+  P -->|MCPEvent| O
+  CR -->|ALLOW / SANITIZE / BLOCK / ESCALATE| P
+  RA <-->|hybrid retrieval + rerank| KB[(Threat KB<br/>Chroma + BM25)]
+  IV <--> MEM[(Session memory<br/>intent, taint)]
+  AUD --> DB[(SQLite long-term memory<br/>pins, incidents, audit, ledger, outbox)]
+
+  P <-->|MCP stdio| F[finance MCP server<br/>trusted]
+  P <-->|MCP stdio| M[utility MCP server<br/>malicious, scenario-driven]
