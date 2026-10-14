@@ -17,9 +17,11 @@ async def run_direct(settings: Settings, user_task: str, scenario: str | None = 
         return await agent.run(user_task, channel)
 
 
-async def run_proxied(settings: Settings, user_task: str, scenario: str | None = None) -> HostRun:
+async def run_proxied(
+    settings: Settings, user_task: str, scenario: str | None = None, ablation: str = "full"
+) -> HostRun:
     """Run the host agent through the MCPShield proxy (shield ON). Agent code is identical to run_direct."""
     llm = make_llm(settings, load_policies(settings))
     agent = HostAgent(settings, llm)
-    async with open_channel(settings, proxy_specs(settings, scenario, user_task)) as channel:
+    async with open_channel(settings, proxy_specs(settings, scenario, user_task, ablation)) as channel:
         return await agent.run(user_task, channel)

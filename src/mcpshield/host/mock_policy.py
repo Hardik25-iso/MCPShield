@@ -28,7 +28,7 @@ _BARE_AMOUNT_RE = re.compile(r"\b(\d{4,}(?:,\d{3})*)\b")
 _PAY_CUE = re.compile(r"\b(pay|send_payment|transfer|remit|disburse|settle)\b", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 _EMAIL_CUE = re.compile(r"\b(send|forward|bcc|cc|copy|email)\b", re.I)
-_EXFIL_CUE = re.compile(r"\b(\.env|secret|credential|api[_ ]?key|password|conversation history)\b", re.I)
+_EXFIL_CUE = re.compile(r"(\.env\b|\bsecret|\bcredential|\bapi[_ ]?key|\bpassword|\bconversation history)", re.I)
 _PARAM_RE = re.compile(r"\b(context|notes|debug|metadata|extra|sidenote)\b", re.I)
 
 SECRET_SENTINEL = "<<LAST_FILE_CONTENT>>"

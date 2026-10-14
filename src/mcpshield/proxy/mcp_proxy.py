@@ -22,7 +22,7 @@ from mcp.client.stdio import stdio_client
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from mcpshield.core.shield_core import ShieldCore
+from mcpshield.core.shield_core import Ablation, ShieldCore
 from mcpshield.host.channel import _child_env
 from mcpshield.schemas import Action, EventType, MCPEvent, ToolDescriptor
 from mcpshield.servers.common import server_context
@@ -110,7 +110,8 @@ class Downstream:
 
 async def _serve() -> None:
     settings, storage = server_context("proxy")
-    shield = ShieldCore(settings, storage)
+    ablation = Ablation.preset(os.environ.get("MCPSHIELD_ABLATION", "full"))
+    shield = ShieldCore(settings, storage, ablation=ablation)
     shield.start_session(os.environ.get("MCPSHIELD_USER_REQUEST", ""))
     downstream = Downstream(settings, shield)
     server: Server = Server("mcpshield")

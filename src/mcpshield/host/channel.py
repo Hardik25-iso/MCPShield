@@ -49,8 +49,10 @@ def direct_specs(settings: Settings, scenario: str | None) -> list[ServerSpec]:
     ]
 
 
-def proxy_specs(settings: Settings, scenario: str | None, user_request: str) -> list[ServerSpec]:
-    env = {"MCPSHIELD_USER_REQUEST": user_request}
+def proxy_specs(
+    settings: Settings, scenario: str | None, user_request: str, ablation: str = "full"
+) -> list[ServerSpec]:
+    env = {"MCPSHIELD_USER_REQUEST": user_request, "MCPSHIELD_ABLATION": ablation}
     if scenario:
         env["MCPSHIELD_SCENARIO"] = scenario
     return [ServerSpec("shield", "mcpshield.proxy.mcp_proxy", env, prefix=False)]

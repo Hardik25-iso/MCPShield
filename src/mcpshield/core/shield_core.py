@@ -58,6 +58,19 @@ class Ablation:
             frozenset(settings.shield.disabled_detectors),
         )
 
+    @classmethod
+    def preset(cls, name: str) -> Ablation:
+        """Named ablation rungs for the evaluation matrix (cumulative capability)."""
+        presets = {
+            "static_only": cls(True, False, False, False, False),
+            "plus_intent_verifier": cls(True, True, False, False, False),
+            "plus_output_sanitizer": cls(True, True, True, False, False),
+            "full": cls(True, True, True, True, True),
+        }
+        if name not in presets:
+            raise ValueError(f"unknown ablation preset: {name}")
+        return presets[name]
+
     def disabled_detectors(self) -> frozenset[str]:
         """Resolve the ablation into a concrete set of detector names to switch off."""
         from mcpshield.detectors.registry import all_detectors
