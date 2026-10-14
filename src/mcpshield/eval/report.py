@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 from mcpshield.config import Settings
 from mcpshield.metrics import Metrics, compute
 from mcpshield.schemas import RunResult
+from mcpshield.viz import configure_chrome
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ def _by_config(results: list[RunResult]) -> dict[str, list[RunResult]]:
 
 def _save(fig: go.Figure, path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
+    configure_chrome()
     try:
         fig.write_image(str(path), width=900, height=500, scale=2)
         return path.name
