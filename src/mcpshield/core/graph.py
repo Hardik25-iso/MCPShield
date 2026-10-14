@@ -57,9 +57,7 @@ class ShieldPipeline:
         return graph.compile()
 
     def run(self, event: MCPEvent) -> ShieldState:
-        return self._app.invoke(
-            {"event": event, "verdicts": [], "stage_latency_ms": {}, "llm_calls": 0, "deep": False}
-        )
+        return self._app.invoke({"event": event, "verdicts": [], "stage_latency_ms": {}, "llm_calls": 0, "deep": False})
 
     # ------------------------------------------------------------ nodes
 
