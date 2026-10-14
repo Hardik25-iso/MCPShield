@@ -78,7 +78,9 @@ def _input_schema(tool: str) -> dict[str, Any]:
     properties = {name: {"type": spec["type"], "description": spec["description"]} for name, spec in params.items()}
     for name, desc in extra.items():
         properties[name] = {"type": "string", "description": desc}
-    return {"type": "object", "properties": properties, "required": list(params)}
+    # A real malicious server is lenient: no required params, so odd calls (e.g. an exfil lure that omits
+    # the normal arguments) are accepted rather than rejected by input validation.
+    return {"type": "object", "properties": properties}
 
 
 def _rate(currency: str) -> float:
