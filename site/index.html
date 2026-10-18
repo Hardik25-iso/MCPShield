@@ -357,15 +357,77 @@
   <div class="wrap">
     <div class="head rv">
       <div class="idx">[ 03 ] &mdash; Architecture</div>
-      <h2 class="disp">A checkpoint on every request.</h2>
-      <p class="sub">MCPShield is a transparent proxy. The agent thinks it's talking to its tools; the tools think they're talking to the agent. Nothing passes without inspection.</p>
+      <h2 class="disp">The real pipeline, end to end.</h2>
+      <p class="sub">A transparent MCP proxy feeds every event into ShieldCore &mdash; a LangGraph state machine of six specialist agents, a ten-family detector registry, a threat-KB and an audit store. Nothing reaches the servers without a verdict.</p>
     </div>
-    <div class="pipe rv">
-      <div class="pnode"><div class="l">Requests help</div><b>Agent</b><span>Does the user's task</span></div>
-      <div class="sep">→</div>
-      <div class="pnode mid"><div class="l">Inspects everything</div><b>MCPShield</b><span>Allow · clean · block · ask</span></div>
-      <div class="sep">→</div>
-      <div class="pnode"><div class="l">Trusted + untrusted</div><b>Tools</b><span>Some safe, some not</span></div>
+    <style>
+      .arch { margin-top:1.4rem; display:flex; flex-direction:column; }
+      .plane { display:flex; align-items:stretch; gap:.55rem; flex-wrap:wrap; justify-content:center; }
+      .pl-label { align-self:center; min-width:60px; font-family:var(--mono); font-size:.58rem; letter-spacing:.16em;
+        text-transform:uppercase; color:var(--muted); }
+      .box { flex:1 1 190px; max-width:300px; background:var(--panel); border:1px solid var(--line-2);
+        padding:.7rem .8rem; border-radius:2px; }
+      .box strong, .agent strong { display:block; font-family:var(--body); font-weight:700; font-size:.92rem; color:var(--ink); }
+      .box span, .agent span, .rail span { display:block; font-family:var(--mono); font-size:.62rem; color:var(--muted);
+        margin-top:.28rem; line-height:1.45; }
+      .ar { align-self:center; color:var(--gold); font-family:var(--mono); font-weight:700; font-size:1.05rem; }
+      .vconn { text-align:center; font-family:var(--mono); font-size:.6rem; letter-spacing:.08em; color:var(--muted);
+        padding:.45rem 0; text-transform:uppercase; }
+      .shieldcore { border:1px solid var(--gold); border-radius:3px; padding:.9rem;
+        background:color-mix(in srgb, var(--gold) 5%, var(--panel)); }
+      .sc-title { font-family:var(--mono); font-size:.66rem; letter-spacing:.08em; color:var(--gold);
+        text-transform:uppercase; margin-bottom:.8rem; }
+      .pipeline { display:flex; align-items:stretch; gap:.45rem; flex-wrap:wrap; justify-content:center; }
+      .agent { flex:1 1 150px; max-width:230px; background:var(--bg2); border:1px solid var(--line-2);
+        padding:.58rem .68rem; border-radius:2px; }
+      .agent .st { font-family:var(--mono); font-size:.55rem; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); }
+      .stagewrap { display:flex; flex-direction:column; gap:.4rem; flex:1 1 240px; max-width:270px; }
+      .stagewrap .agent { max-width:none; }
+      .rails { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:.5rem; margin-top:.85rem; }
+      .rail { background:var(--bg); border:1px dashed var(--line-2); padding:.55rem .7rem; border-radius:2px;
+        font-family:var(--body); font-weight:700; font-size:.8rem; color:var(--ink); }
+    </style>
+    <div class="arch rv">
+      <div class="plane">
+        <div class="pl-label">Host</div>
+        <div class="box"><strong>User task</strong><span>"summarise invoice INV-1007"</span></div>
+        <span class="ar">&rarr;</span>
+        <div class="box"><strong>Finance Ops agent</strong><span>LangGraph ReAct loop · reads tool metadata &amp; results as context</span></div>
+      </div>
+      <div class="vconn">&darr;&nbsp; every tools/list &middot; tools/call &middot; tool/result &nbsp;&middot;&nbsp; results flow back &uarr;</div>
+      <div class="plane">
+        <div class="pl-label">Proxy</div>
+        <div class="box" style="max-width:560px;flex-basis:560px"><strong>MCP proxy</strong><span>an MCP server to the agent, an MCP client to the real servers &middot; transparent &middot; carries no detection logic of its own</span></div>
+      </div>
+      <div class="vconn">&darr;&nbsp; every event handed to the shield core</div>
+      <div class="shieldcore rv">
+        <div class="sc-title">ShieldCore &middot; LangGraph state machine &nbsp;//&nbsp; plan &rarr; rules &rarr; conditional deep (LLM) &rarr; critic &rarr; audit</div>
+        <div class="pipeline">
+          <div class="agent"><span class="st">planner</span><strong>Orchestrator</strong><span>plans checks; fast rule path, deep LLM path only in the grey zone 0.3&ndash;0.7</span></div>
+          <span class="ar">&rarr;</span>
+          <div class="stagewrap">
+            <div class="agent"><span class="st">guards tools/list</span><strong>Registry Auditor</strong><span>hash-pin &middot; rug pull &middot; shadowing &middot; poisoning &middot; split payload</span></div>
+            <div class="agent"><span class="st">guards tools/call</span><strong>Intent Verifier</strong><span>intent &middot; policy (cap, vendor, domain, sandbox) &middot; taint</span></div>
+            <div class="agent"><span class="st">guards tool/result</span><strong>Output Sanitizer</strong><span>scrub injected orders &middot; spotlight / quarantine</span></div>
+          </div>
+          <span class="ar">&rarr;</span>
+          <div class="agent"><span class="st">arbiter</span><strong>Critic</strong><span>weighted noisy-OR + reputation prior &rarr; block .80 / escalate .60 / sanitize .35</span></div>
+          <span class="ar">&rarr;</span>
+          <div class="agent"><span class="st">monitor</span><strong>Auditor</strong><span>structured record: verdict, evidence, latency</span></div>
+        </div>
+        <div class="rails">
+          <div class="rail">Detector registry &mdash; 10 families<span>instruction &middot; hidden-text &middot; schema-params &middot; cross-tool &middot; sensitive-data &middot; policy &middot; taint &middot; rag-similarity &middot; llm-judge &middot; reputation</span></div>
+          <div class="rail">RAG threat-KB<span>Chroma + BM25 &middot; RRF fusion &middot; re-rank &middot; hashing/lexical fallback offline</span></div>
+          <div class="rail">Storage &mdash; SQLite (WAL)<span>tool pins &middot; audit log &middot; ledger &middot; outbox &middot; incidents</span></div>
+          <div class="rail">LLM layer<span>mock / Ollama &middot; schema-validated JSON &middot; fails closed</span></div>
+        </div>
+      </div>
+      <div class="vconn">&darr;&nbsp; allowed traffic only reaches the servers</div>
+      <div class="plane">
+        <div class="pl-label">Servers</div>
+        <div class="box"><strong>finance server</strong><span>trusted &middot; invoices, payments, email, files &middot; real side effects</span></div>
+        <div class="box"><strong>utility server</strong><span>scenario-driven &middot; plays the malicious / compromised tool</span></div>
+      </div>
     </div>
     <div class="outs rv">
       <div class="out"><b><span class="sq" style="background:var(--green)"></span>Allow</b><p>Clearly safe, so it passes straight through. Normal work isn't slowed.</p></div>
