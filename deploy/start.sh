@@ -4,6 +4,19 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+
+# Resolve the package from the source tree and the config from the repo root,
+# independent of how/where the package was installed.
+export PYTHONPATH="${ROOT}/src:${PYTHONPATH:-}"
+export MCPSHIELD_CONFIG="${MCPSHIELD_CONFIG:-${ROOT}/config.yaml}"
+
+echo "[start] MCPShield boot marker v2 | root=${ROOT}"
+echo "[start] MCPSHIELD_CONFIG=${MCPSHIELD_CONFIG} exists=$([ -f "${MCPSHIELD_CONFIG}" ] && echo yes || echo NO)"
+echo "[start] PYTHONPATH=${PYTHONPATH}"
+
+# Fail fast with a clear message if config settings cannot load.
+python -c "from mcpshield.config import get_settings; get_settings(); print('[start] settings loaded OK')"
 
 # Generate synthetic finance records if absent (idempotent, seeded).
 if [ ! -f data/synthetic/invoices.json ]; then

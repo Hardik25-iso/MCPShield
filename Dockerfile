@@ -17,6 +17,11 @@ COPY . .
 
 RUN pip install -e . && chmod +x deploy/start.sh
 
+# Resolve the package from source and config from the repo root regardless of
+# install location (start.sh sets these too; kept here for any other entrypoint).
+ENV PYTHONPATH=/app/src \
+    MCPSHIELD_CONFIG=/app/config.yaml
+
 # Render provides $PORT; default to 8501 for local `docker run`.
 ENV PORT=8501
 EXPOSE 8501
