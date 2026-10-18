@@ -9,15 +9,22 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install the package and its core dependencies from pyproject.
-COPY pyproject.toml README.md ./
-COPY src ./src
-RUN pip install .
-
-# Copy the rest of the project (app, data, scripts, config).
+# Copy the whole project, then install editable so the package stays rooted at
+# /app/src. config.py derives the repo root from its own file location
+# (parents[2]); a non-editable install into site-packages would point that at the
+# Python lib dir, so config.yaml and the data/var paths would not be found.
 COPY . .
 
-RUN chmod +x deploy/start.sh
+# Install dependencies, then remove the installed package copy so the ONLY
+# importable mcpshield is the source tree at /app/src (via PYTHONPATH). This
+# keeps config.py's repo-root resolution (parents[2]) pointing at /app and
+# prevents a site-packages copy from shadowing the source.
+RUN pip install . && pip uninstall -y mcpshield && chmod +x deploy/start.sh
+
+# Resolve the package from source and config from the repo root regardless of
+# install location (start.sh sets these too; kept here for any other entrypoint).
+ENV PYTHONPATH=/app/src \
+    MCPSHIELD_CONFIG=/app/config.yaml
 
 # Render provides $PORT; default to 8501 for local `docker run`.
 ENV PORT=8501

@@ -9,3 +9,5 @@ data/synthetic/*
 .mypy_cache
 .ruff_cache
 .venv
+deliverables
+CLAUDE.md
