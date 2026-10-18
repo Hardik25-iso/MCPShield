@@ -1,0 +1,16 @@
+# Render blueprint for the MCPShield Streamlit demo.
+# Create a new Blueprint on render.com pointing at this repo; Render reads this file.
+services:
+  - type: web
+    name: mcpshield
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /_stcore/health
+    envVars:
+      # Mock LLM backend: fully offline, deterministic, no Ollama or API key needed.
+      - key: MCPSHIELD_LLM__BACKEND
+        value: mock
+      - key: PYTHONUNBUFFERED
+        value: "1"
