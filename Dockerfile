@@ -15,7 +15,11 @@ WORKDIR /app
 # Python lib dir, so config.yaml and the data/var paths would not be found.
 COPY . .
 
-RUN pip install -e . && chmod +x deploy/start.sh
+# Install dependencies, then remove the installed package copy so the ONLY
+# importable mcpshield is the source tree at /app/src (via PYTHONPATH). This
+# keeps config.py's repo-root resolution (parents[2]) pointing at /app and
+# prevents a site-packages copy from shadowing the source.
+RUN pip install . && pip uninstall -y mcpshield && chmod +x deploy/start.sh
 
 # Resolve the package from source and config from the repo root regardless of
 # install location (start.sh sets these too; kept here for any other entrypoint).
