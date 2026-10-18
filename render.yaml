@@ -1,10 +1,26 @@
-# Render blueprint for the MCPShield Streamlit demo.
-# Create a new Blueprint on render.com pointing at this repo; Render reads this file.
+# Render blueprint for MCPShield.
+# Two services: the cinematic landing site (static, always-on) and the
+# interactive Streamlit demo (Docker web service).
 services:
+  # Public front door: the cinematic explainer. Static, free, no cold start.
+  - type: web
+    name: mcpshield-site
+    runtime: static
+    branch: claude/zealous-knuth-lp9w3a
+    buildCommand: "echo no build step"
+    staticPublishPath: site
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # Interactive demo: the Streamlit dashboard.
   - type: web
     name: mcpshield
     runtime: docker
     plan: free
+    branch: claude/zealous-knuth-lp9w3a
     dockerfilePath: ./Dockerfile
     autoDeploy: true
     healthCheckPath: /_stcore/health
