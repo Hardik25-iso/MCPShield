@@ -9,15 +9,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install the package and its core dependencies from pyproject.
-COPY pyproject.toml README.md ./
-COPY src ./src
-RUN pip install .
-
-# Copy the rest of the project (app, data, scripts, config).
+# Copy the whole project, then install editable so the package stays rooted at
+# /app/src. config.py derives the repo root from its own file location
+# (parents[2]); a non-editable install into site-packages would point that at the
+# Python lib dir, so config.yaml and the data/var paths would not be found.
 COPY . .
 
-RUN chmod +x deploy/start.sh
+RUN pip install -e . && chmod +x deploy/start.sh
 
 # Render provides $PORT; default to 8501 for local `docker run`.
 ENV PORT=8501
