@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
+
+import httpx
+import pytest
+
 from mcpshield.config import Settings
-from mcpshield.llm import REQUEST_TAG, UNTRUSTED_TAG, MockLLM, make_llm, tagged
+from mcpshield.llm import GROQ_KEY_ENV, REQUEST_TAG, UNTRUSTED_TAG, GroqLLM, MockLLM, OllamaLLM, make_llm, tagged
 from mcpshield.schemas import IntentResult, JudgeVerdict, Policies
 
 
@@ -39,3 +45,59 @@ def test_factory_falls_back_to_mock_when_ollama_unreachable(settings: Settings, 
     )
     assert make_llm(unreachable, policies).backend == "mock"
     assert make_llm(settings, policies).backend == "mock"
+
+
+def _groq(settings: Settings, handler: Callable[[httpx.Request], httpx.Response]) -> GroqLLM:
+    return GroqLLM(settings, "test-model", "test-key", transport=httpx.MockTransport(handler))
+
+
+def test_groq_structured_parses_json_and_requests_json_mode(settings: Settings) -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        seen["auth"] = request.headers["authorization"]
+        content = '{"malicious": true, "serves_request": false, "confidence": 0.9, "reason": "covert payment"}'
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    verdict = _groq(settings, handler).structured("prompt", JudgeVerdict)
+    assert verdict is not None and verdict.malicious and verdict.reason == "covert payment"
+    assert seen["response_format"] == {"type": "json_object"}
+    assert seen["model"] == "test-model" and seen["auth"] == "Bearer test-key"
+
+
+def test_groq_outage_falls_back_conservatively(settings: Settings) -> None:
+    llm = _groq(settings, lambda request: httpx.Response(429, json={"error": "rate limited"}))
+    assert llm.structured("prompt", JudgeVerdict) is None
+
+
+def test_groq_invalid_output_is_retried_then_abandoned(settings: Settings) -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "not json"}}]})
+
+    assert _groq(settings, handler).structured("prompt", JudgeVerdict) is None
+    assert len(calls) == settings.llm.max_retries + 1
+
+
+def test_groq_available_checks_the_model_list(settings: Settings) -> None:
+    llm = _groq(settings, lambda request: httpx.Response(200, json={"data": [{"id": "test-model"}]}))
+    assert llm.available()
+
+
+def test_factory_selects_groq_model_by_purpose(
+    settings: Settings, policies: Policies, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    groq = settings.model_copy(update={"llm": settings.llm.model_copy(update={"backend": "groq"})})
+    monkeypatch.delenv(GROQ_KEY_ENV, raising=False)
+    assert make_llm(groq, policies).backend == "mock"
+    monkeypatch.setenv(GROQ_KEY_ENV, "test-key")
+    assert make_llm(groq, policies).model == settings.llm.groq_judge_model
+    assert make_llm(groq, policies, purpose="agent").model == settings.llm.groq_agent_model
+
+
+def test_ollama_outage_falls_back_conservatively(settings: Settings) -> None:
+    down = settings.model_copy(update={"llm": settings.llm.model_copy(update={"ollama_url": "http://127.0.0.1:9"})})
+    assert OllamaLLM(down).structured("prompt", JudgeVerdict) is None

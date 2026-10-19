@@ -1,12 +1,11 @@
-"""Finance Ops Assistant: a ReAct-style host agent (LangGraph for Ollama, deterministic policy for mock).
+"""Finance Ops Assistant: a ReAct-style host agent (real LLM for Ollama/Groq, deterministic policy for mock).
 
 The agent's code is identical whether it connects to the servers directly (shield OFF) or to the MCPShield
 proxy (shield ON); only the channel differs. It records a thought/action/observation trace so the UI can show
 the perception-reasoning-action loop, and keeps short-term session memory (request, intent, taint, trace).
 
-Mock mode uses `NaiveObedientPolicy` (worst-case obedient agent). Ollama mode builds a LangGraph ReAct agent
-with native tool calling via langchain-mcp-adapters; it is implemented here but not exercised by the offline
-test suite.
+Mock mode uses `NaiveObedientPolicy` (worst-case obedient agent). Real-LLM mode (Ollama or Groq) runs a ReAct
+loop with native tool calling (`llm_agent.run_llm_agent`); the offline test suite does not exercise it.
 """
 
 from __future__ import annotations
@@ -15,9 +14,9 @@ from dataclasses import dataclass
 
 from mcpshield.config import Settings
 from mcpshield.host.channel import ToolChannel
+from mcpshield.host.llm_agent import run_llm_agent
 from mcpshield.host.mock_policy import SECRET_SENTINEL, NaiveObedientPolicy, PlannedCall
-from mcpshield.host.ollama_agent import run_ollama
-from mcpshield.llm import LLMClient, OllamaLLM
+from mcpshield.llm import GroqLLM, LLMClient, OllamaLLM
 from mcpshield.schemas import SessionContext, TaintEntry, ToolDescriptor, TraceStep, new_id
 
 
@@ -36,8 +35,8 @@ class HostAgent:
         self._max_steps = settings.eval.max_agent_steps
 
     async def run(self, user_task: str, channel: ToolChannel) -> HostRun:
-        if isinstance(self._llm, OllamaLLM):
-            session, answer, executed = await run_ollama(self._llm, user_task, channel, self._max_steps)
+        if isinstance(self._llm, OllamaLLM | GroqLLM):
+            session, answer, executed = await run_llm_agent(self._llm, user_task, channel, self._max_steps)
             return HostRun(session=session, answer=answer, tool_calls=executed)
         return await self._run_mock(user_task, channel)
 

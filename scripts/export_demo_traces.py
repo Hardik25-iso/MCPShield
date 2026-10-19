@@ -63,7 +63,7 @@ def main() -> None:
         off_exfil = storage.exfil_records()
 
         storage.reset()
-        on = anyio.run(run_proxied, s, sc.user_task, sc.id, "full")
+        anyio.run(run_proxied, s, sc.user_task, sc.id, "full")
         on_records = sorted(storage.audit_records(limit=10000), key=lambda r: r.timestamp)
 
         # the decisive non-ALLOW decision (BLOCK/SANITIZE/ESCALATE)
@@ -112,8 +112,10 @@ def main() -> None:
     out.write_text(json.dumps({"scenarios": results}, indent=2))
     print(f"wrote {out} with {len(results)} scenarios")
     for r in results:
-        print(f"  {r['cls']:20} OFF={'HIT' if r['off']['succeeded'] else '—':3} "
-              f"ON={r['on']['action']} risk={r['on']['risk']}")
+        print(
+            f"  {r['cls']:20} OFF={'HIT' if r['off']['succeeded'] else '—':3} "
+            f"ON={r['on']['action']} risk={r['on']['risk']}"
+        )
 
 
 if __name__ == "__main__":

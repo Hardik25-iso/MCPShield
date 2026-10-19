@@ -29,6 +29,16 @@ export MCPSHIELD_LLM__BACKEND=ollama
 ```
 If Ollama is unreachable, MCPShield automatically falls back to the deterministic mock backend.
 
+### Optional: Groq backend (hosted, real LLM agents)
+```bash
+uv sync --extra api --extra groq
+export MCPSHIELD_LLM__BACKEND=groq
+export GROQ_API_KEY=...       # from console.groq.com; never put it in config.yaml
+```
+The host agent uses `llm.groq_agent_model` (tool calling) and the shield's LLM judge uses `llm.groq_judge_model`.
+Without `GROQ_API_KEY` the backend falls back to mock. `GET /health/llm` on the API confirms both models are
+available for your key.
+
 ## Run
 ```bash
 make app             # launch the Streamlit UI (Overview, Live Agent, Attack Lab, Tool Registry,
@@ -46,10 +56,27 @@ MCPSHIELD_SCENARIO=poison_plain_01 uv run python -m mcpshield.servers.utility_se
 MCPSHIELD_USER_REQUEST="..." uv run python -m mcpshield.proxy.mcp_proxy
 ```
 
-## Mock vs Ollama
+## Live API
+```bash
+uv run uvicorn api.main:app --port 8000
+```
+- `POST /analyze {text, stage}` runs any text through the real ShieldCore as a tool description, tool result
+  or tool-call argument and returns the action, fused risk, the agent that caught it and each detector's evidence.
+- `POST /agent {task, shield, scenario | attack_tool + attack_description/attack_output}` runs the host agent end
+  to end over the real stdio servers, shield OFF (direct) or ON (through the proxy), against a catalogue attack
+  or one typed in, and reports the trace, the payments/emails/secret leaks that actually happened, and the
+  shield's decisions.
+- `GET /scenarios`, `GET /health`, `GET /health/llm`.
+
+Each request runs on its own temporary SQLite database, so concurrent users never share state. Origins, rate
+limits, input caps and the agent timeout are in the `api` section of `config.yaml`. Deployed on Render with
+`Dockerfile.api` (see `render.yaml`).
+
+## Mock vs real LLMs
 - **Mock (default):** deterministic, offline, used for tests, CI and a reproducible demo. The mock host agent
   is a deliberately naive, worst-case obedient agent, so shield-OFF attack success is 100% by construction.
-- **Ollama:** real local models with tool calling; vulnerability and detection quality vary by model.
+- **Ollama / Groq:** real models with tool calling; vulnerability and detection quality vary by model. The
+  reported evaluation numbers are from the mock backend.
 
 ## Quality
 ```bash

@@ -29,7 +29,7 @@ lint:
 	$(RUN) ruff format --check .
 
 typecheck:
-	$(RUN) mypy src tests
+	$(RUN) mypy src tests api
 
 check: lint typecheck test
 

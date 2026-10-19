@@ -41,7 +41,8 @@ instruction_patterns:
   - {label: payment_redirect, weight: 1.0, regex: '\b(pay|transfer|send|remit|route|redirect)\b[^.]{0,60}\b(account|a/c|acct|beneficiary)\b[^.]{0,20}\d{6,}'}
   - {label: bank_detail_change, weight: 0.9, regex: '\b(update|change|switch|replace)\b[^.]{0,30}\b(bank (details|account)|beneficiary|ifsc)\b'}
   - {label: recipient_redirect, weight: 0.9, regex: '\b(bcc|cc|forward|copy|send a copy)\b[^.]{0,40}[\w.+-]+@[\w-]+\.[\w.]+'}
-  - {label: secret_harvest, weight: 1.0, regex: '\b(include|append|attach|add|put|pass|paste|insert|fill)\b[^.]{0,60}\b(api[_ ]?keys?|secrets?|credentials?|passwords?|\.env|tokens?|private keys?)\b'}
+  # ".env" sits outside the \b group: a word boundary can never precede its leading dot.
+  - {label: secret_harvest, weight: 1.0, regex: '\b(include|append|attach|add|put|pass|paste|insert|fill)\b[^.]{0,60}(\b(api[_ ]?keys?|secrets?|credentials?|passwords?|tokens?|private keys?)\b|\.env\b)'}
   - {label: secret_file_read, weight: 1.0, regex: '\bread\b[^.]{0,40}(\.env\b|credentials|id_rsa|secrets?\.)'}
   - {label: shadow_other_tool, weight: 0.9, regex: '\b(whenever|when|every time|each time|before)\b[^.]{0,40}\b(send_email|send_payment|sending (an )?emails?|making (a )?payments?)\b[^.]{0,80}\b(must|always|also|instead|first)\b'}
   - {label: param_override, weight: 0.9, regex: '\b(always|instead|must)\b[^.]{0,40}\b(set|use|change)\b[^.]{0,30}\b(recipient|amount|account|vendor_id|to address|the to field)\b'}
