@@ -100,8 +100,8 @@ logging:
 api:                         # live HTTP API (api/main.py)
   # Browser origins allowed to call it: the Vercel site (incl. preview deploys) and local development.
   allowed_origin_regex: '^https://mcpshield-site(-[a-z0-9-]+)?\.vercel\.app$|^http://(localhost|127\.0\.0\.1)(:\d+)?$'
-  rate_limit_per_minute: 30        # per client IP, all endpoints
-  agent_rate_limit_per_minute: 4   # per client IP, /agent (spawns servers and calls the hosted LLM)
+  rate_limit_per_minute: 60        # per client IP, all endpoints
+  agent_rate_limit_per_minute: 12  # per client IP, /agent; a "shield off, then on" click is 2 runs
   max_text_chars: 4000
   max_task_chars: 400
   agent_timeout_s: 120

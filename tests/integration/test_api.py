@@ -109,3 +109,11 @@ def test_health_never_exposes_the_llm_key(client: TestClient, monkeypatch: pytes
     response = client.get("/health")
     assert "gsk_do_not_leak" not in response.text
     assert response.json()["groq_key_configured"] is True
+
+
+def test_rug_pull_scenario_is_warmed_up_so_the_change_is_visible(client: TestClient) -> None:
+    body = {"task": "Weather in Mumbai?", "scenario": "rugpull_weather_01"}
+    off = _post(client, "/agent", {**body, "shield": False})
+    on = _post(client, "/agent", {**body, "shield": True})
+    assert off["compromised"] and off["note"]
+    assert not on["compromised"]

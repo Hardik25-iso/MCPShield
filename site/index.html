@@ -1039,6 +1039,7 @@
       var model = d.backend === "mock" ? "scripted worst-case agent (no LLM key on the server)" : d.backend + " · " + d.model;
       var html = d.compromised ? "<span class='v bad'>COMPROMISED</span>" : "<span class='v ok'>SAFE</span>";
       html += "<div><span class='k'>agent:</span> " + esc(model) + "</div>";
+      if (d.note) html += "<div><span class='k'>note:</span> " + esc(d.note) + "</div>";
       if (d.compromised) html += "<div><span class='k'>what went wrong:</span>" + agList(d.compromise_reasons) + "</div>";
       html += "<div><span class='k'>payments:</span>" + agList(d.payments.map(function (p) {
         return p.vendor_id + " — " + Number(p.amount).toLocaleString(); })) + "</div>";

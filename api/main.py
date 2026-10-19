@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, model_validator
 from mcpshield.config import Settings, get_settings
 from mcpshield.core.shield_core import ShieldCore
 from mcpshield.data_loader import load_policies, load_scenarios
+from mcpshield.host.host_agent import HostRun
 from mcpshield.host.runner import run_direct, run_proxied
 from mcpshield.llm import GROQ_KEY_ENV, GroqLLM, make_llm
 from mcpshield.rag.retriever import open_retriever
@@ -254,6 +255,7 @@ class AgentOut(BaseModel):
     decisions: list[DecisionOut]
     compromised: bool
     compromise_reasons: list[str]
+    note: str = ""
 
 
 def _compromise(task: str, storage: Storage) -> list[str]:
@@ -276,11 +278,20 @@ def _compromise(task: str, storage: Storage) -> list[str]:
 
 async def _agent(body: AgentIn) -> AgentOut:
     custom = body.custom_behaviors()
+    rug_pull = body.scenario is not None and scenarios[body.scenario].attack_class.value == "rug_pull"
     with _isolated() as s:
-        if body.shield:
-            run = await run_proxied(s, body.task, body.scenario, "full", custom)
-        else:
-            run = await run_direct(s, body.task, body.scenario, custom)
+
+        async def run_once() -> HostRun:
+            if body.shield:
+                return await run_proxied(s, body.task, body.scenario, "full", custom)
+            return await run_direct(s, body.task, body.scenario, custom)
+
+        if rug_pull:
+            # A rug pull needs two listings: a first run approves and pins the clean tool, then the tool
+            # changes. Mirror the evaluation: warm up, clear its side effects, then score the second run.
+            await run_once()
+            Storage(s.paths.db_path).reset_side_effects()
+        run = await run_once()
         storage = Storage(s.paths.db_path)
         llm = make_llm(s, policies, purpose="agent")
         decisions = [
@@ -308,6 +319,7 @@ async def _agent(body: AgentIn) -> AgentOut:
             decisions=decisions,
             compromised=bool(reasons),
             compromise_reasons=reasons,
+            note="Rug pull: a first run approved the clean tool; this run saw its changed version." if rug_pull else "",
         )
 
 
