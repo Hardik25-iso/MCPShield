@@ -20,15 +20,17 @@ import tempfile
 import threading
 import time
 from collections import defaultdict, deque
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from pydantic import BaseModel, Field, model_validator
+from starlette.types import Receive, Scope, Send
 
 from mcpshield.config import Settings, get_settings
 from mcpshield.core.shield_core import ShieldCore
@@ -37,7 +39,9 @@ from mcpshield.host.host_agent import HostRun
 from mcpshield.host.runner import run_direct, run_proxied
 from mcpshield.llm import GROQ_KEY_ENV, GroqLLM, make_llm
 from mcpshield.rag.retriever import open_retriever
-from mcpshield.schemas import Action, Decision, EventType, MCPEvent, ToolDescriptor
+from mcpshield.scanner import ScanError, audit, fetch_remote_tools, parse_config, parse_tool_list
+from mcpshield.schemas import Action, ConfigServer, Decision, EventType, MCPEvent, ServerReport, ToolDescriptor
+from mcpshield.servers.demo_http import build_server, demo_tools
 from mcpshield.storage import Storage
 from mcpshield.text_utils import compile_patterns, instruction_hits
 
@@ -53,7 +57,34 @@ Stage = Literal["desc", "result", "call"]
 _STAGE_AGENT = {"desc": "Registry Auditor", "result": "Output Sanitizer", "call": "Intent Verifier"}
 _STAGE_LABEL = {"desc": "tool listing", "result": "tool result", "call": "tool-call argument"}
 
-app = FastAPI(title="MCPShield live API", version="2.0")
+# Hosted demo MCP servers (malicious and clean), so a scan always has a real remote server to point at.
+_demo_servers = {
+    server_id: (title, StreamableHTTPSessionManager(build_server(server_id, tools), stateless=True, json_response=True))
+    for server_id, (title, tools) in demo_tools(settings).items()
+}
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async with AsyncExitStack() as stack:
+        for _title, manager in _demo_servers.values():
+            await stack.enter_async_context(manager.run())
+        yield
+
+
+app = FastAPI(title="MCPShield live API", version="3.0", lifespan=_lifespan)
+
+
+def _mcp_endpoint(manager: StreamableHTTPSessionManager) -> Callable[[Scope, Receive, Send], Awaitable[None]]:
+    async def handle(scope: Scope, receive: Receive, send: Send) -> None:
+        await manager.handle_request(scope, receive, send)
+
+    return handle
+
+
+for _server_id, (_title, _manager) in _demo_servers.items():
+    app.mount(f"/demo-mcp/{_server_id}", _mcp_endpoint(_manager))
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=cfg.allowed_origin_regex,
@@ -63,6 +94,7 @@ app.add_middleware(
 
 _analyze_slots = threading.BoundedSemaphore(cfg.analyze_concurrency)
 _agent_slot = asyncio.Semaphore(1)  # one live agent run at a time: it spawns MCP servers and calls the LLM
+_scan_slots = asyncio.Semaphore(cfg.analyze_concurrency)
 
 
 # ---------------------------------------------------------------- request hygiene
@@ -202,6 +234,17 @@ async def analyze(body: AnalyzeIn, request: Request) -> AnalyzeOut:
 # ---------------------------------------------------------------- /agent
 
 
+_MAX_DRIVE_TOOLS = 30  # a scanned tool list travels to the sandboxed server in one environment variable
+
+
+class ToolIn(BaseModel):
+    """A tool from a scan, test-driven in a sandbox (served verbatim, calls never forwarded)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=cfg.max_text_chars)
+    inputSchema: dict[str, object] = Field(default_factory=dict)  # MCP's own field name
+
+
 class AgentIn(BaseModel):
     task: str = Field(min_length=1, max_length=cfg.max_task_chars)
     shield: bool = True
@@ -209,12 +252,13 @@ class AgentIn(BaseModel):
     attack_tool: UtilityTool | None = None
     attack_description: str | None = Field(default=None, max_length=cfg.max_text_chars)
     attack_output: str | None = Field(default=None, max_length=cfg.max_text_chars)
+    tools: list[ToolIn] | None = Field(default=None, min_length=1, max_length=_MAX_DRIVE_TOOLS)
 
     @model_validator(mode="after")
     def _one_attack_source(self) -> AgentIn:
         custom = bool(self.attack_description or self.attack_output)
-        if self.scenario and custom:
-            raise ValueError("choose a catalogue scenario or a custom attack, not both")
+        if sum((bool(self.scenario), custom, bool(self.tools))) > 1:
+            raise ValueError("choose one: a catalogue scenario, a custom attack, or a scanned tool list")
         if self.scenario and self.scenario not in scenarios:
             raise ValueError(f"unknown scenario {self.scenario}")
         if custom and not self.attack_tool:
@@ -226,6 +270,9 @@ class AgentIn(BaseModel):
             return None
         behavior = {"description": self.attack_description, "output": self.attack_output}
         return json.dumps({self.attack_tool: behavior})
+
+    def external_tools(self) -> str | None:
+        return json.dumps([t.model_dump() for t in self.tools]) if self.tools else None
 
 
 class StepOut(BaseModel):
@@ -277,14 +324,14 @@ def _compromise(task: str, storage: Storage) -> list[str]:
 
 
 async def _agent(body: AgentIn) -> AgentOut:
-    custom = body.custom_behaviors()
+    custom, external = body.custom_behaviors(), body.external_tools()
     rug_pull = body.scenario is not None and scenarios[body.scenario].attack_class.value == "rug_pull"
     with _isolated() as s:
 
         async def run_once() -> HostRun:
             if body.shield:
-                return await run_proxied(s, body.task, body.scenario, "full", custom)
-            return await run_direct(s, body.task, body.scenario, custom)
+                return await run_proxied(s, body.task, body.scenario, "full", custom, external)
+            return await run_direct(s, body.task, body.scenario, custom, external)
 
         if rug_pull:
             # A rug pull needs two listings: a first run approves and pins the clean tool, then the tool
@@ -336,6 +383,73 @@ async def agent(body: AgentIn, request: Request) -> AgentOut:
             raise HTTPException(status_code=504, detail="The agent run timed out.") from exc
         except Exception as exc:  # the hosted LLM can rate-limit or fail mid-run; report it instead of a 500
             raise HTTPException(status_code=502, detail=f"Agent run failed: {type(exc).__name__}") from exc
+
+
+# ---------------------------------------------------------------- /scan
+
+
+class ScanIn(BaseModel):
+    kind: Literal["url", "tool_list", "config"]
+    input: str = Field(min_length=1, max_length=settings.scanner.max_input_chars)
+
+
+class ScanOut(BaseModel):
+    reports: list[ServerReport]
+    config_servers: list[ConfigServer] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+_MAX_CONFIG_SERVERS = 8
+
+
+def _audit(tools: list[ToolDescriptor], server: str, source: Literal["url", "tool_list"]) -> ServerReport:
+    with _isolated() as s:
+        llm = make_llm(s, policies)
+        shield = ShieldCore(s, Storage(s.paths.db_path), llm, retriever=retriever)
+        shield.start_session("scan: assess this MCP server's tool definitions before installing it")
+        return audit(tools, server, source, shield, s)
+
+
+async def _scan_url(url: str) -> ServerReport:
+    host, tools = await fetch_remote_tools(url, settings)
+    return await run_in_threadpool(_audit, tools, host, "url")
+
+
+async def _scan(body: ScanIn) -> ScanOut:
+    if body.kind == "url":
+        return ScanOut(reports=[await _scan_url(body.input)])
+    if body.kind == "tool_list":
+        tools = parse_tool_list(body.input, settings)
+        return ScanOut(reports=[await run_in_threadpool(_audit, tools, "pasted-server", "tool_list")])
+    servers = parse_config(body.input, settings, policies)
+    reports, errors = [], []
+    for entry in servers[:_MAX_CONFIG_SERVERS]:
+        if entry.kind != "remote" or not entry.url:
+            continue
+        try:
+            reports.append((await _scan_url(entry.url)).model_copy(update={"server": entry.name}))
+        except ScanError as exc:
+            errors.append(f"{entry.name}: {exc}")
+    return ScanOut(reports=reports, config_servers=servers, errors=errors)
+
+
+@app.post("/scan", response_model=ScanOut)
+async def scan(body: ScanIn, request: Request) -> ScanOut:
+    _throttle(request, "all", cfg.rate_limit_per_minute)
+    async with _scan_slots:
+        try:
+            return await _scan(body)
+        except ScanError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/demo-servers")
+def demo_servers(request: Request) -> list[dict[str, str]]:
+    base = str(request.base_url).rstrip("/")
+    return [
+        {"id": server_id, "title": title, "url": f"{base}/demo-mcp/{server_id}/mcp"}
+        for server_id, (title, _manager) in _demo_servers.items()
+    ]
 
 
 # ---------------------------------------------------------------- discovery and health

@@ -307,6 +307,48 @@ class ExfilRecord(BaseModel):
     timestamp: datetime = Field(default_factory=utcnow)
 
 
+# ---------------------------------------------------------------- server scanner
+
+
+Grade = Literal["safe", "review", "dangerous"]
+ReportSource = Literal["url", "tool_list"]
+
+
+class ToolFinding(BaseModel):
+    """The scanner's verdict on one tool, as offered by the server (the tool is never called)."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    action: Action
+    risk: float
+    families: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    revealed: str | None = None  # description after decoding hidden text, when it differs
+    fingerprint: str  # sha256 of the canonical definition; a later change is a rug pull
+
+
+class ConfigServer(BaseModel):
+    """One server entry from an MCP client config (Claude Desktop, Cursor, VS Code)."""
+
+    name: str
+    kind: Literal["remote", "local"]
+    url: str | None = None
+    command: str | None = None
+    inline_secrets: list[str] = Field(default_factory=list)  # names only, never values
+
+
+class ServerReport(BaseModel):
+    server: str
+    source: ReportSource
+    grade: Grade
+    risk: float
+    tools: list[ToolFinding]
+    server_findings: list[str] = Field(default_factory=list)  # cross-tool and server-level signals
+    scanned_at: datetime = Field(default_factory=utcnow)
+
+
 # ---------------------------------------------------------------- scenarios and evaluation
 
 

@@ -106,3 +106,11 @@ api:                         # live HTTP API (api/main.py)
   max_task_chars: 400
   agent_timeout_s: 120
   analyze_concurrency: 4
+
+scanner:                     # MCP server scanner (src/mcpshield/scanner.py)
+  timeout_s: 15              # whole fetch of a remote server's tool list
+  max_tools: 100
+  max_description_chars: 4000
+  max_input_chars: 200000    # pasted config or tool list
+  allow_private_urls: false  # true only for local development and tests (SSRF guard)
+  demo_servers_file: data/scenarios/demo_servers.yaml
