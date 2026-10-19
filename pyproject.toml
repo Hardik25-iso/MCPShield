@@ -27,6 +27,7 @@ dependencies = [
 # without it the RAG layer uses the deterministic hashing embedder and lexical reranker.
 embeddings = ["sentence-transformers>=3.0"]
 deck = ["python-pptx>=0.6.23", "kaleido>=0.2.1"]
+api = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [dependency-groups]
 dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]

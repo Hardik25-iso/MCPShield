@@ -379,6 +379,7 @@
         <div class="trisk" id="trisk"></div>
         <div class="reveal" id="treveal"></div>
         <ul class="dets" id="tdets"></ul>
+        <div class="trisk" id="tengine" style="margin-top:.5rem;padding-top:.4rem;border-top:1px dashed var(--line)"></div>
       </div>
     </div>
     <p class="scnmeta rv" style="margin-bottom:.5rem"><b>Or replay a recorded attack from the 41-attack suite:</b></p>
@@ -846,8 +847,51 @@
         ul.appendChild(li);
       });
     }
-    function runAnalyze() { renderOut(analyze(tin.value, curStage)); }
-    document.getElementById("analyzeBtn").onclick = runAnalyze;
+    // Real engine endpoint. The page calls the live ShieldCore API; if it is cold or
+    // unreachable it falls back to the in-browser engine so the demo never hard-fails.
+    var API_BASE = "https://mcpshield-api.onrender.com";
+    var engEl = document.getElementById("tengine"), aBtn = document.getElementById("analyzeBtn");
+
+    function renderReal(d) {
+      tout.hidden = false;
+      var cls = { BLOCK:"b-block", ESCALATE:"b-esc", SANITIZE:"b-san", ALLOW:"b-allow" }[d.action] || "b-allow";
+      var badge = document.getElementById("tbadge"); badge.className = "badge " + cls; badge.textContent = d.action;
+      document.getElementById("tagent").textContent = d.action === "ALLOW"
+        ? "— no action taken · passes " + d.agent
+        : "— caught by " + d.agent + " at the " + d.stage + " stage";
+      document.getElementById("trisk").innerHTML = "fused risk <b>" + Number(d.risk).toFixed(2) + "</b> "
+        + "<span style='color:var(--muted)'>(noisy-OR · block .80 / escalate .60 / sanitize .35)</span>";
+      document.getElementById("treveal").textContent = "";
+      var ul = document.getElementById("tdets"); ul.innerHTML = "";
+      if (!d.verdicts.length) {
+        var li = document.createElement("li"); li.innerHTML = "<span class='fam'>clean</span> — no detector fired."; ul.appendChild(li);
+      } else d.verdicts.forEach(function (v) {
+        var ev = (v.evidence && v.evidence.length) ? v.evidence.join(" · ") : (v.reasons || []).join(", ");
+        var li = document.createElement("li");
+        li.innerHTML = "<span class='fam'>" + v.family + "</span> &middot; <span class='ev'>" + (ev || "matched") + "</span>"
+          + " <span style='color:var(--muted)'>(" + v.agent + " · risk " + Number(v.risk).toFixed(2) + ")</span>";
+        ul.appendChild(li);
+      });
+      engEl.innerHTML = "<span style='color:var(--green)'>&#9679; live engine</span> — real ShieldCore agents on the server";
+    }
+
+    function runAnalyze() {
+      var text = tin.value, stage = curStage;
+      aBtn.disabled = true; aBtn.textContent = "Analyzing…";
+      engEl.innerHTML = ""; tout.hidden = false;
+      var ctrl = new AbortController(), to = setTimeout(function () { ctrl.abort(); }, 15000);
+      fetch(API_BASE + "/analyze", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text, stage: stage }), signal: ctrl.signal
+      }).then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+        .then(function (d) { clearTimeout(to); renderReal(d); })
+        .catch(function () {
+          clearTimeout(to); renderOut(analyze(text, stage));
+          engEl.innerHTML = "<span style='color:var(--gold)'>&#9679; offline estimate</span> — live engine unreachable; showing the in-browser detectors";
+        })
+        .then(function () { aBtn.disabled = false; aBtn.innerHTML = "Analyze &rarr;"; });
+    }
+    aBtn.onclick = runAnalyze;
 
     var sseg = document.getElementById("stageSeg");
     function applyStage(key) {

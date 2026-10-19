@@ -1,0 +1,15 @@
+# MCPShield live-analyzer API image (Render / any Docker host).
+# Installs dependencies incl. the api extra, drops the installed package copy so the
+# only importable mcpshield is the source at /app/src (keeps config.py's repo-root
+# resolution pointing at /app). Mock LLM backend: fully offline, no model downloads.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app
+
+COPY . .
+RUN pip install '.[api]' && pip uninstall -y mcpshield && chmod +x deploy/start_api.sh
+
+ENV PYTHONPATH=/app/src MCPSHIELD_CONFIG=/app/config.yaml PORT=8000
+EXPOSE 8000
+CMD ["./deploy/start_api.sh"]
