@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 
 COPY . .
-RUN pip install '.[api]' && pip uninstall -y mcpshield && chmod +x deploy/start_api.sh
+RUN pip install '.[api,groq]' && pip uninstall -y mcpshield && chmod +x deploy/start_api.sh
 
 ENV PYTHONPATH=/app/src MCPSHIELD_CONFIG=/app/config.yaml PORT=8000
 EXPOSE 8000

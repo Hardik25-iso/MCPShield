@@ -1,14 +1,17 @@
-"""The one LLM interface. `OllamaLLM` (local models) and `MockLLM` (deterministic rules) implement
-`LLMClient`; `make_llm` picks one from config. Agents receive an `LLMClient` by injection.
+"""The one LLM interface. `OllamaLLM` (local models), `GroqLLM` (hosted, OpenAI-compatible) and `MockLLM`
+(deterministic rules) implement `LLMClient`; `make_llm` picks one from config. Agents receive an `LLMClient`
+by injection.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
 import random
 import re
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -23,6 +26,9 @@ M = TypeVar("M", bound=BaseModel)
 
 REQUEST_TAG = "user_request"
 UNTRUSTED_TAG = "untrusted"
+GROQ_KEY_ENV = "GROQ_API_KEY"
+
+Purpose = Literal["judge", "agent"]
 
 
 def tagged(tag: str, text: str) -> str:
@@ -108,9 +114,12 @@ class OllamaLLM:
         self, prompt: str, schema: type[M], *, system: str = "", temperature: float | None = None
     ) -> M | None:
         for attempt in range(self._cfg.max_retries + 1):
-            raw = self._chat(prompt, system, temperature, schema.model_json_schema())
             try:
+                raw = self._chat(prompt, system, temperature, schema.model_json_schema())
                 return _parse(schema, raw)
+            except LLMUnavailable as exc:
+                log.warning("%s unavailable for %s: %s", self._model, schema.__name__, exc)
+                return None
             except (ValidationError, ValueError):
                 log.warning("invalid %s output from %s (attempt %d)", schema.__name__, self._model, attempt + 1)
         return None
@@ -120,6 +129,80 @@ class OllamaLLM:
         from langchain_ollama import ChatOllama
 
         return ChatOllama(model=self._model, base_url=self._cfg.ollama_url, temperature=self._cfg.temperature)
+
+
+class GroqLLM:
+    """Hosted models on Groq's OpenAI-compatible API. The key comes from the environment, never config."""
+
+    backend = "groq"
+
+    def __init__(self, settings: Settings, model: str, api_key: str, transport: httpx.BaseTransport | None = None):
+        self._cfg = settings.llm
+        self._model = model
+        self._key = api_key
+        self._client = httpx.Client(
+            base_url=self._cfg.groq_url,
+            timeout=self._cfg.timeout_s,
+            headers={"Authorization": f"Bearer {api_key}"},
+            transport=transport,
+        )
+        self.calls = 0
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def available(self) -> bool:
+        try:
+            response = self._client.get("/models")
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return False
+        return self._model in {m.get("id", "") for m in response.json().get("data", [])}
+
+    def _chat(self, prompt: str, system: str, temperature: float | None, json_mode: bool) -> str:
+        messages = [{"role": "system", "content": system}] if system else []
+        messages.append({"role": "user", "content": prompt})
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": self._cfg.temperature if temperature is None else temperature,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        self.calls += 1
+        try:
+            response = self._client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise LLMUnavailable(str(exc)) from exc
+        return str(response.json()["choices"][0]["message"].get("content") or "")
+
+    def complete(self, prompt: str, *, system: str = "", temperature: float | None = None) -> str:
+        return self._chat(prompt, system, temperature, json_mode=False)
+
+    def structured(
+        self, prompt: str, schema: type[M], *, system: str = "", temperature: float | None = None
+    ) -> M | None:
+        spec = f"Reply with only a JSON object that matches this JSON schema:\n{json.dumps(schema.model_json_schema())}"
+        full_system = f"{system}\n\n{spec}" if system else spec
+        for attempt in range(self._cfg.max_retries + 1):
+            try:
+                return _parse(schema, self._chat(prompt, full_system, temperature, json_mode=True))
+            except LLMUnavailable as exc:
+                log.warning("%s unavailable for %s: %s", self._model, schema.__name__, exc)
+                return None
+            except (ValidationError, ValueError):
+                log.warning("invalid %s output from %s (attempt %d)", schema.__name__, self._model, attempt + 1)
+        return None
+
+    def chat_model(self) -> Any:
+        """LangChain chat model (OpenAI-compatible) for the host agent's native tool calling."""
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=self._model, base_url=self._cfg.groq_url, api_key=self._key, temperature=self._cfg.temperature
+        )
 
 
 class MockLLM:
@@ -183,8 +266,17 @@ class MockLLM:
         return JudgeVerdict(malicious=malicious, serves_request=not malicious, confidence=confidence, reason=reason)
 
 
-def make_llm(settings: Settings, policies: Policies, model: str | None = None) -> LLMClient:
-    """Select the backend from config; an unreachable Ollama falls back to MockLLM with a warning."""
+def make_llm(settings: Settings, policies: Policies, model: str | None = None, purpose: Purpose = "judge") -> LLMClient:
+    """Select the backend from config. Groq without a key, or an unreachable Ollama, falls back to MockLLM.
+
+    `purpose` picks the hosted model: the host agent needs strong tool calling, the judge a fast model.
+    """
+    if settings.llm.backend == "groq":
+        key = os.environ.get(GROQ_KEY_ENV, "")
+        if key:
+            default = settings.llm.groq_agent_model if purpose == "agent" else settings.llm.groq_judge_model
+            return GroqLLM(settings, model or default, key)
+        log.warning("%s is not set; using MockLLM", GROQ_KEY_ENV)
     if settings.llm.backend == "ollama":
         ollama = OllamaLLM(settings, model)
         if ollama.available():

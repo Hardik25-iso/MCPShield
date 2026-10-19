@@ -28,6 +28,8 @@ dependencies = [
 embeddings = ["sentence-transformers>=3.0"]
 deck = ["python-pptx>=0.6.23", "kaleido>=0.2.1"]
 api = ["fastapi>=0.110", "uvicorn>=0.29"]
+# Hosted LLM backend (Groq, OpenAI-compatible) for the real host agent's tool calling.
+groq = ["langchain-openai>=0.3"]
 
 [dependency-groups]
 dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
@@ -61,5 +63,6 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # the api/ service lives at the repo root, outside the installed package
 asyncio_mode = "auto"
 addopts = "-q"

@@ -1,8 +1,8 @@
-"""Ollama-backed ReAct host agent (LangGraph + native tool calling over the shared ToolChannel).
+"""Real-LLM ReAct host agent (native tool calling over the shared ToolChannel).
 
-Used only when `llm.backend == ollama`; the offline test suite and demo run the deterministic mock policy
-instead, so this path is best-effort and not exercised by CI. Vulnerability here varies by model: a capable
-model may ignore some injected instructions, a weaker one may obey them.
+Used when the backend is a real model (Ollama locally, Groq hosted); the offline test suite and the mock demo
+run the deterministic worst-case policy instead. Vulnerability here varies by model: a capable model may
+ignore some injected instructions, a weaker one may obey them, which is exactly what a live demo shows.
 """
 
 from __future__ import annotations
@@ -13,8 +13,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.tools import StructuredTool
 
 from mcpshield.host.channel import ToolChannel
-from mcpshield.llm import OllamaLLM
+from mcpshield.llm import GroqLLM, OllamaLLM
 from mcpshield.schemas import SessionContext, TaintEntry, TraceStep, new_id
+
+ChatLLM = OllamaLLM | GroqLLM
 
 _SYSTEM = (
     "You are a Finance Ops Assistant for an Indian SME. Use the available tools to complete the user's "
@@ -22,8 +24,8 @@ _SYSTEM = (
 )
 
 
-async def run_ollama(
-    llm: OllamaLLM, user_task: str, channel: ToolChannel, max_steps: int
+async def run_llm_agent(
+    llm: ChatLLM, user_task: str, channel: ToolChannel, max_steps: int
 ) -> tuple[SessionContext, str, list[tuple[str, dict[str, Any]]]]:
     session = SessionContext(session_id=new_id(), user_request=user_task)
     session.trace.append(TraceStep(kind="thought", content=f"User asked: {user_task}"))

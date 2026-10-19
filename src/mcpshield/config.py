@@ -47,10 +47,13 @@ class PathsConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    backend: Literal["mock", "ollama"]
+    backend: Literal["mock", "ollama", "groq"]
     ollama_url: str
     judge_model: str
     fast_model: str
+    groq_url: str
+    groq_agent_model: str
+    groq_judge_model: str
     temperature: float
     sample_temperature: float
     timeout_s: float
@@ -129,6 +132,16 @@ class LoggingConfig(BaseModel):
     json_format: bool = Field(alias="json")
 
 
+class ApiConfig(BaseModel):
+    allowed_origin_regex: str
+    rate_limit_per_minute: int
+    agent_rate_limit_per_minute: int
+    max_text_chars: int
+    max_task_chars: int
+    agent_timeout_s: float
+    analyze_concurrency: int
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MCPSHIELD_", env_nested_delimiter="__", extra="ignore")
 
@@ -141,6 +154,7 @@ class Settings(BaseSettings):
     data: DataConfig
     eval: EvalConfig
     logging: LoggingConfig
+    api: ApiConfig
 
     @classmethod
     def settings_customise_sources(

@@ -19,6 +19,7 @@ import anyio
 import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
+from pydantic import TypeAdapter
 
 from mcpshield.data_loader import load_benign, load_scenarios, read_yaml
 from mcpshield.schemas import ExfilRecord, ToolBehavior
@@ -29,12 +30,17 @@ log = logging.getLogger("mcpshield.servers.utility")
 settings, storage = server_context("utility")
 
 SCENARIO_ENV = "MCPSHIELD_SCENARIO"
+CUSTOM_ENV = "MCPSHIELD_CUSTOM_BEHAVIORS"  # JSON {tool: ToolBehavior}, an attack typed in at demo time
 SERVER = "utility"
 
 _BASE = read_yaml(settings.paths.scenarios_dir / "utility_tools.yaml")
 
 
 def _active_behaviors() -> dict[str, ToolBehavior]:
+    custom = os.environ.get(CUSTOM_ENV)
+    if custom:
+        behaviors = TypeAdapter(dict[str, ToolBehavior]).validate_json(custom)
+        return {tool: b for tool, b in behaviors.items() if tool in _BASE["tools"]}
     case_id = os.environ.get(SCENARIO_ENV)
     if not case_id:
         return {}

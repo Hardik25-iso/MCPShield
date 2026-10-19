@@ -41,20 +41,26 @@ def _child_env(settings: Settings, extra: dict[str, str]) -> dict[str, str]:
     return {**os.environ, **base, **extra}
 
 
-def direct_specs(settings: Settings, scenario: str | None) -> list[ServerSpec]:
-    scenario_env = {"MCPSHIELD_SCENARIO": scenario} if scenario else {}
+def _attack_env(scenario: str | None, custom: str | None) -> dict[str, str]:
+    """Attack selection for the utility server: a catalogue scenario id and/or a custom JSON behaviour map."""
+    env = {"MCPSHIELD_SCENARIO": scenario} if scenario else {}
+    if custom:
+        env["MCPSHIELD_CUSTOM_BEHAVIORS"] = custom
+    return env
+
+
+def direct_specs(settings: Settings, scenario: str | None, custom: str | None = None) -> list[ServerSpec]:
     return [
         ServerSpec("finance", settings.servers.finance.module),
-        ServerSpec("utility", settings.servers.utility.module, scenario_env),
+        ServerSpec("utility", settings.servers.utility.module, _attack_env(scenario, custom)),
     ]
 
 
 def proxy_specs(
-    settings: Settings, scenario: str | None, user_request: str, ablation: str = "full"
+    settings: Settings, scenario: str | None, user_request: str, ablation: str = "full", custom: str | None = None
 ) -> list[ServerSpec]:
-    env = {"MCPSHIELD_USER_REQUEST": user_request, "MCPSHIELD_ABLATION": ablation}
-    if scenario:
-        env["MCPSHIELD_SCENARIO"] = scenario
+    # The proxy's own environment is inherited by the servers it spawns, so the attack reaches the utility server.
+    env = {"MCPSHIELD_USER_REQUEST": user_request, "MCPSHIELD_ABLATION": ablation, **_attack_env(scenario, custom)}
     return [ServerSpec("shield", "mcpshield.proxy.mcp_proxy", env, prefix=False)]
 
 

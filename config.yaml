@@ -17,10 +17,13 @@ paths:
   log_file: var/mcpshield.log
 
 llm:
-  backend: mock              # mock | ollama
+  backend: mock              # mock | ollama | groq (groq reads its key from the GROQ_API_KEY env var)
   ollama_url: http://localhost:11434
   judge_model: qwen3:8b
   fast_model: llama3.2:3b
+  groq_url: https://api.groq.com/openai/v1
+  groq_agent_model: openai/gpt-oss-120b   # host agent: native tool calling
+  groq_judge_model: openai/gpt-oss-20b    # shield's LLM judge and self-consistency samples
   temperature: 0.0
   sample_temperature: 0.7    # used for self-consistency samples
   timeout_s: 60
@@ -93,3 +96,13 @@ eval:
 logging:
   level: INFO
   json: true
+
+api:                         # live HTTP API (api/main.py)
+  # Browser origins allowed to call it: the Vercel site (incl. preview deploys) and local development.
+  allowed_origin_regex: '^https://mcpshield-site(-[a-z0-9-]+)?\.vercel\.app$|^http://(localhost|127\.0\.0\.1)(:\d+)?$'
+  rate_limit_per_minute: 30        # per client IP, all endpoints
+  agent_rate_limit_per_minute: 4   # per client IP, /agent (spawns servers and calls the hosted LLM)
+  max_text_chars: 4000
+  max_task_chars: 400
+  agent_timeout_s: 120
+  analyze_concurrency: 4
