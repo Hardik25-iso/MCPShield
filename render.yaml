@@ -15,6 +15,21 @@ services:
         source: /*
         destination: /index.html
 
+  # Live analyzer API: runs arbitrary input through the real ShieldCore agents.
+  - type: web
+    name: mcpshield-api
+    runtime: docker
+    plan: free
+    branch: claude/zealous-knuth-lp9w3a
+    dockerfilePath: ./Dockerfile.api
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: MCPSHIELD_LLM__BACKEND
+        value: mock
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
   # Interactive demo: the Streamlit dashboard.
   - type: web
     name: mcpshield
