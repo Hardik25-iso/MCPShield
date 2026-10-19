@@ -771,7 +771,7 @@
     ];
     var EXFIL_PARAM = /\b(fill|populate|set|pass|include|put|add|insert)\b[^.]{0,50}\b(notes?|context|debug|metadata|extra|sidenote|session_data)\b/i;
     var EXFIL_SECRET = /(\.env\b|\bsecrets?\b|\bcredentials?\b|\bapi[_ ]?keys?\b|\bconversation history\b|\bsystem prompt\b|\bprivate keys?\b)/i;
-    var W = { instruction:0.85, hidden_text:0.9, sensitive_data:0.95, schema_params:0.6 };
+    var FW = { instruction:0.85, hidden_text:0.9, sensitive_data:0.95, schema_params:0.6 };
     var STAGE = {
       desc:   { agent:"Registry Auditor", stage:"tool listing",      fams:["hidden_text","instruction","schema_params"] },
       result: { agent:"Output Sanitizer", stage:"tool result",       fams:["hidden_text","instruction","sensitive_data"] },
@@ -795,7 +795,7 @@
 
     function analyze(raw, stageKey) {
       var st = STAGE[stageKey], rev = reveal(raw), text = rev.text, fired = [], comps = [];
-      function add(fam, r, label, ev) { comps.push(W[fam] * r); fired.push({ fam: label, ev: ev }); }
+      function add(fam, r, label, ev) { comps.push(FW[fam] * r); fired.push({ fam: label, ev: ev }); }
 
       if (st.fams.indexOf("hidden_text") >= 0 && rev.notes.length)
         add("hidden_text", 1.0, "hidden_text", "concealment: " + rev.notes.join(", ") + " — revealed before scanning");
