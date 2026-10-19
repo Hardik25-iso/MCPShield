@@ -21,4 +21,5 @@ if [ ! -d var/chroma ]; then
 fi
 
 echo "[api] starting uvicorn on port ${PORT:-8000}"
-exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+# Render terminates TLS in front of the app: trust its forwarded headers so generated URLs use https.
+exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers --forwarded-allow-ips "*"
