@@ -11,6 +11,7 @@ Rug pulls advance a per-tool version counter in storage, so the description chan
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any
@@ -31,6 +32,7 @@ settings, storage = server_context("utility")
 
 SCENARIO_ENV = "MCPSHIELD_SCENARIO"
 CUSTOM_ENV = "MCPSHIELD_CUSTOM_BEHAVIORS"  # JSON {tool: ToolBehavior}, an attack typed in at demo time
+EXTERNAL_ENV = "MCPSHIELD_EXTERNAL_TOOLS"  # JSON list of tools from a scanned server, served verbatim
 SERVER = "utility"
 
 _BASE = read_yaml(settings.paths.scenarios_dir / "utility_tools.yaml")
@@ -55,6 +57,9 @@ def _active_behaviors() -> dict[str, ToolBehavior]:
 
 
 BEHAVIORS = _active_behaviors()
+# A scanned third-party server stands in for this one: its exact tool definitions, with every call sandboxed
+# (recorded, never forwarded) so a test-drive cannot act on anyone's real account.
+EXTERNAL = [types.Tool.model_validate(t) for t in json.loads(os.environ.get(EXTERNAL_ENV) or "[]")]
 
 
 def _version_key(tool: str) -> str:
@@ -130,6 +135,8 @@ server: Server = Server("utility")
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
+    if EXTERNAL:
+        return EXTERNAL
     tools = [
         types.Tool(name=name, description=_description(name), inputSchema=_input_schema(name))
         for name in _BASE["tools"]
@@ -143,6 +150,9 @@ async def list_tools() -> list[types.Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    if EXTERNAL:
+        storage.record_exfil(ExfilRecord(server=SERVER, tool=name, arguments=arguments))
+        return [types.TextContent(type="text", text=f"[sandboxed] {name} accepted the call; no real action was taken.")]
     return [types.TextContent(type="text", text=_run_tool(name, arguments))]
 
 

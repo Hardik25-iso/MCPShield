@@ -66,7 +66,18 @@ uv run uvicorn api.main:app --port 8000
   to end over the real stdio servers, shield OFF (direct) or ON (through the proxy), against a catalogue attack
   or one typed in, and reports the trace, the payments/emails/secret leaks that actually happened, and the
   shield's decisions.
-- `GET /scenarios`, `GET /health`, `GET /health/llm`.
+- `POST /scan {kind: url | config | tool_list, input}` audits an MCP server before it is installed: a remote
+  server URL (streamable HTTP or SSE), a Claude Desktop / Cursor / VS Code config (remote entries are fetched,
+  local ones listed, plain-text secrets flagged by name), or a pasted `tools/list` JSON. Every tool goes through
+  the real ShieldCore and gets a verdict, risk, reasons, evidence, decoded hidden text and a fingerprint (the site
+  remembers fingerprints in the browser and flags changed tools on a later scan: rug-pull watch). Tools are only
+  listed, never called. URLs must be public http(s): private/internal addresses, embedded credentials and
+  redirects are refused.
+- `/demo-mcp/{travel-desk,docs-search,weather-pro}/mcp` are hosted demo MCP servers (malicious, clean, and one
+  that changes its tools every minute), defined in `data/scenarios/demo_servers.yaml`.
+- `POST /agent` also accepts `tools` (a scanned tool list) to test-drive that server with the real agent, shield
+  off vs on; the tools are served verbatim by a sandbox and calls are never forwarded to the real server.
+- `GET /scenarios`, `GET /demo-servers`, `GET /health`, `GET /health/llm`.
 
 Each request runs on its own temporary SQLite database, so concurrent users never share state. Origins, rate
 limits, input caps and the agent timeout are in the `api` section of `config.yaml`. Deployed on Render with

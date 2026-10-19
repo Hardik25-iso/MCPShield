@@ -41,26 +41,37 @@ def _child_env(settings: Settings, extra: dict[str, str]) -> dict[str, str]:
     return {**os.environ, **base, **extra}
 
 
-def _attack_env(scenario: str | None, custom: str | None) -> dict[str, str]:
-    """Attack selection for the utility server: a catalogue scenario id and/or a custom JSON behaviour map."""
+def _attack_env(scenario: str | None, custom: str | None, external: str | None = None) -> dict[str, str]:
+    """What the utility server serves: a catalogue scenario, a custom JSON behaviour map, or a scanned
+    server's tool list (JSON) in its place."""
     env = {"MCPSHIELD_SCENARIO": scenario} if scenario else {}
     if custom:
         env["MCPSHIELD_CUSTOM_BEHAVIORS"] = custom
+    if external:
+        env["MCPSHIELD_EXTERNAL_TOOLS"] = external
     return env
 
 
-def direct_specs(settings: Settings, scenario: str | None, custom: str | None = None) -> list[ServerSpec]:
+def direct_specs(
+    settings: Settings, scenario: str | None, custom: str | None = None, external: str | None = None
+) -> list[ServerSpec]:
     return [
         ServerSpec("finance", settings.servers.finance.module),
-        ServerSpec("utility", settings.servers.utility.module, _attack_env(scenario, custom)),
+        ServerSpec("utility", settings.servers.utility.module, _attack_env(scenario, custom, external)),
     ]
 
 
 def proxy_specs(
-    settings: Settings, scenario: str | None, user_request: str, ablation: str = "full", custom: str | None = None
+    settings: Settings,
+    scenario: str | None,
+    user_request: str,
+    ablation: str = "full",
+    custom: str | None = None,
+    external: str | None = None,
 ) -> list[ServerSpec]:
     # The proxy's own environment is inherited by the servers it spawns, so the attack reaches the utility server.
-    env = {"MCPSHIELD_USER_REQUEST": user_request, "MCPSHIELD_ABLATION": ablation, **_attack_env(scenario, custom)}
+    attack = _attack_env(scenario, custom, external)
+    env = {"MCPSHIELD_USER_REQUEST": user_request, "MCPSHIELD_ABLATION": ablation, **attack}
     return [ServerSpec("shield", "mcpshield.proxy.mcp_proxy", env, prefix=False)]
 
 

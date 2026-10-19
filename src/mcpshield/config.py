@@ -132,6 +132,21 @@ class LoggingConfig(BaseModel):
     json_format: bool = Field(alias="json")
 
 
+class ScannerConfig(BaseModel):
+    timeout_s: float
+    max_tools: int
+    max_description_chars: int
+    max_input_chars: int
+    allow_private_urls: bool
+    demo_servers_file: Path
+
+    @model_validator(mode="after")
+    def _absolutize(self) -> ScannerConfig:
+        if not self.demo_servers_file.is_absolute():
+            object.__setattr__(self, "demo_servers_file", REPO_ROOT / self.demo_servers_file)
+        return self
+
+
 class ApiConfig(BaseModel):
     allowed_origin_regex: str
     rate_limit_per_minute: int
@@ -155,6 +170,7 @@ class Settings(BaseSettings):
     eval: EvalConfig
     logging: LoggingConfig
     api: ApiConfig
+    scanner: ScannerConfig
 
     @classmethod
     def settings_customise_sources(
