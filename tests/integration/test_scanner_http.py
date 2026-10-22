@@ -87,6 +87,11 @@ def test_scan_rejects_bad_input_with_a_readable_message(base_url: str) -> None:
     assert response.status_code == 422 and "not valid JSON" in response.json()["detail"]
 
 
+def test_url_that_is_not_an_mcp_server_explains_why(base_url: str) -> None:
+    response = httpx.post(base_url + "/scan", json={"kind": "url", "input": f"{base_url}/nowhere"}, timeout=60)
+    assert response.status_code == 422 and "No MCP endpoint" in response.json()["detail"]
+
+
 def test_scanned_server_can_be_test_driven_safely(base_url: str) -> None:
     report = _post(base_url, "/scan", {"kind": "url", "input": f"{base_url}/demo-mcp/travel-desk/mcp"})["reports"][0]
     tools = [
