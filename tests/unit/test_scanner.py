@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 
 from mcpshield.config import Settings
 from mcpshield.core.shield_core import ShieldCore
 from mcpshield.llm import MockLLM
-from mcpshield.scanner import ScanError, audit, check_url, parse_config, parse_tool_list
+from mcpshield.scanner import ScanError, audit, check_url, failure_reason, parse_config, parse_tool_list
 from mcpshield.schemas import Action, Policies, ToolDescriptor
 from mcpshield.servers.demo_http import demo_tools
 from mcpshield.storage import Storage
@@ -78,6 +79,23 @@ def test_vs_code_config_shape(settings: Settings, policies: Policies) -> None:
         json.dumps({"servers": {"docs": {"type": "http", "url": "https://x.dev/mcp"}}}), settings, policies
     )
     assert entries[0].kind == "remote"
+
+
+@pytest.mark.parametrize(
+    ("status", "headers", "message"),
+    [
+        (401, {}, "requires sign-in"),
+        (400, {"WWW-Authenticate": 'Bearer realm="x"'}, "requires sign-in"),
+        (302, {"Location": "https://elsewhere.example/mcp"}, "redirects"),
+        (200, {"Content-Type": "text/html; charset=utf-8"}, "web page"),
+        (404, {}, "No MCP endpoint"),
+        (429, {}, "rate-limiting"),
+        (502, {}, "failed to answer"),
+        (200, {"Content-Type": "application/json"}, "not as an MCP server"),
+    ],
+)
+def test_failed_scans_say_why(status: int, headers: dict[str, str], message: str) -> None:
+    assert message in failure_reason(httpx.Response(status, headers=headers))
 
 
 def _demo(settings: Settings, server_id: str) -> list[ToolDescriptor]:

@@ -116,7 +116,57 @@ async def fetch_remote_tools(url: str, settings: Settings) -> tuple[str, list[To
         except Exception:  # unreachable, wrong transport, not an MCP server: try the next transport
             continue
         return host, [_descriptor(host, t.name, t.description, t.inputSchema, cfg) for t in tools]
-    raise ScanError("Could not list tools from that URL. Is it a public MCP server endpoint (streamable HTTP or SSE)?")
+    raise ScanError(await _diagnose(url.strip(), cfg))
+
+
+_INITIALIZE = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "mcpshield", "version": "1"},
+    },
+}
+
+
+async def _diagnose(url: str, cfg: ScannerConfig) -> str:
+    """Both transports failed: probe the URL once more to tell the user why, in plain words."""
+    try:
+        async with _client(timeout=httpx.Timeout(cfg.timeout_s)) as http:
+            response = await http.post(url, json=_INITIALIZE, headers={"Accept": "application/json, text/event-stream"})
+            if response.status_code in (404, 405):
+                response = await http.get(url, headers={"Accept": "text/html"})
+    except httpx.TimeoutException:
+        return f"The server did not answer within {cfg.timeout_s:g} s."
+    except httpx.HTTPError:
+        return "Could not connect to that URL. Check the address and that the server is online."
+    return failure_reason(response)
+
+
+def failure_reason(response: httpx.Response) -> str:
+    """Explain why a URL that answered over HTTP is not a scannable MCP endpoint."""
+    status = response.status_code
+    if status in (401, 403) or "www-authenticate" in response.headers:
+        return (
+            f"This server requires sign-in (HTTP {status}), so its tools cannot be listed anonymously. "
+            "Copy its tool list from a client where you are signed in and use the Tool list (JSON) tab."
+        )
+    if response.is_redirect:
+        return "That URL redirects elsewhere, and redirects are not followed. Scan the final address directly."
+    if "text/html" in response.headers.get("content-type", "") and status < 400:
+        return (
+            "That is a web page, not an MCP endpoint. Use the server's endpoint URL, "
+            "which usually ends in /mcp or /sse (directory and docs pages list it)."
+        )
+    if status in (404, 405):
+        return f"No MCP endpoint at that path (HTTP {status}). Endpoint URLs usually end in /mcp or /sse."
+    if status == 429:
+        return "The server is rate-limiting requests (HTTP 429). Try again in a minute."
+    if status >= 500:
+        return f"The server failed to answer (HTTP {status}). Try again later."
+    return f"The server answered (HTTP {status}) but not as an MCP server (streamable HTTP or SSE)."
 
 
 def _descriptor(
